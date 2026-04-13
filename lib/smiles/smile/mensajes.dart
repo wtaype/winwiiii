@@ -1,273 +1,511 @@
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../firebase_options.dart';
 import '../wicss.dart';
 import '../widev.dart';
 
 class MensajesPage extends StatefulWidget {
-	const MensajesPage({super.key});
+  const MensajesPage({super.key});
 
-	@override
-	State<MensajesPage> createState() => _MensajesPageState();
+  @override
+  State<MensajesPage> createState() => _MensajesPageState();
 }
 
 class _MensajesPageState extends State<MensajesPage> {
-	final _textCtrl = TextEditingController();
-	final _scrollCtrl = ScrollController();
-	final List<_MensajeDoc> _mensajes = [];
-	bool _loading = true;
-	bool _sending = false;
+  static const _limit = 50;
 
-	User? get _user => FirebaseAuth.instance.currentUser;
+  final _textCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
+  List<_MensajeDoc> _mensajes = [];
+  bool _loading = true;
+  bool _sending = false;
+  bool _online = false;
+  String _displayUsuario = 'Usuario';
+  String _activeEmail = '';
+  Timer? _realtimeTimer;
 
-	@override
-	void initState() {
-		super.initState();
-		_loadMensajes();
-	}
+  User? get _user => FirebaseAuth.instance.currentUser;
+  String get _projectId => DefaultFirebaseOptions.windows.projectId;
 
-	@override
-	void dispose() {
-		_textCtrl.dispose();
-		_scrollCtrl.dispose();
-		super.dispose();
-	}
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
 
-	Future<String> _usuarioActual(User user) async {
-		final prefs = await SharedPreferences.getInstance();
-		final savedName = prefs.getString('wi_profile_name')?.trim();
-		if (savedName != null && savedName.isNotEmpty) return savedName;
-		if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
-			return user.displayName!.trim();
-		}
-		final emailName = user.email?.split('@').first;
-		if (emailName != null && emailName.trim().isNotEmpty) return emailName.trim();
-		return 'Usuario';
-	}
+  @override
+  void dispose() {
+    _realtimeTimer?.cancel();
+    _textCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
 
-	Future<void> _loadMensajes() async {
-		final prefs = await SharedPreferences.getInstance();
-		final raw = prefs.getString('wiMensajes');
-		if (raw != null && raw.isNotEmpty) {
-			try {
-				final data = jsonDecode(raw) as List<dynamic>;
-				_mensajes
-					..clear()
-					..addAll(
-						data
-							.map((e) => _MensajeDoc.fromMap(e as Map<String, dynamic>))
-							.where((e) => e.mensaje.trim().isNotEmpty),
-					);
-			} catch (_) {
-				_mensajes.clear();
-			}
-		}
+  Future<void> _bootstrap() async {
+    final user = _user;
+    if (user != null) {
+      _activeEmail = await _emailActual(user);
+    }
+    await _loadPerfil();
+    await _syncMensajes(silent: true);
+    if (!mounted) return;
+    setState(() => _loading = false);
+    _startRealtime();
+    _scrollEnd();
+  }
 
-		_mensajes.sort((a, b) => a.fecha.compareTo(b.fecha));
-		if (!mounted) return;
-		setState(() => _loading = false);
-		_scrollEnd();
-	}
+  void _startRealtime() {
+    _realtimeTimer?.cancel();
+    _realtimeTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      _syncMensajes(silent: true);
+    });
+  }
 
-	Future<void> _saveMensajes() async {
-		final prefs = await SharedPreferences.getInstance();
-		await prefs.setString('wiMensajes', jsonEncode(_mensajes.map((m) => m.toMap()).toList()));
-	}
+  String _nombreCompleto(String? nombre, String? apellidos) {
+    final n = (nombre ?? '').trim();
+    final a = (apellidos ?? '').trim();
+    if (n.isEmpty) return a;
+    if (a.isEmpty) return n;
+    return '$n $a';
+  }
 
-	void _scrollEnd() {
-		WidgetsBinding.instance.addPostFrameCallback((_) {
-			if (!_scrollCtrl.hasClients) return;
-			_scrollCtrl.animateTo(
-				_scrollCtrl.position.maxScrollExtent,
-				duration: const Duration(milliseconds: 280),
-				curve: Curves.easeOut,
-			);
-		});
-	}
+  Future<Map<String, dynamic>> _leerWiSmile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('wiSmile');
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) return decoded;
+    } catch (_) {}
+    return {};
+  }
 
-	Future<void> _send() async {
-		final user = _user;
-		final mensaje = _textCtrl.text.trim();
-		final email = user?.email?.trim();
-		if (user == null || email == null || email.isEmpty || mensaje.isEmpty || _sending) return;
+  Future<void> _loadPerfil() async {
+    final user = _user;
+    if (user == null) return;
+    final wiSmile = await _leerWiSmile();
+    final nombre = _nombreCompleto(
+      wiSmile['nombre'] as String?,
+      wiSmile['apellidos'] as String?,
+    ).trim();
+    final usuario = (wiSmile['usuario'] as String? ?? '').trim();
+    final email = (wiSmile['email'] as String? ?? user.email ?? '').trim();
+    final display = nombre.isNotEmpty
+        ? nombre
+        : (usuario.isNotEmpty ? usuario : (email.isNotEmpty ? email : 'Usuario'));
+    if (!mounted) return;
+    setState(() => _displayUsuario = display);
+  }
 
-		setState(() => _sending = true);
-		try {
-			final nowMs = DateTime.now().millisecondsSinceEpoch;
-			final docId = 'm$nowMs';
-			final now = DateTime.now();
-			final usuario = await _usuarioActual(user);
+  Future<String> _usuarioActual(User user) async {
+    final wiSmile = await _leerWiSmile();
+    final nombre = _nombreCompleto(
+      wiSmile['nombre'] as String?,
+      wiSmile['apellidos'] as String?,
+    ).trim();
+    if (nombre.isNotEmpty) return nombre;
+    final usuario = (wiSmile['usuario'] as String? ?? '').trim();
+    if (usuario.isNotEmpty) return usuario;
+    final emailWiSmile = (wiSmile['email'] as String? ?? '').trim();
+    if (emailWiSmile.isNotEmpty) return emailWiSmile;
+    return user.email?.trim().isNotEmpty == true ? user.email!.trim() : 'Usuario';
+  }
 
-			_mensajes.add(
-				_MensajeDoc(
-					email: email,
-					fecha: now,
-					id: docId,
-					mensaje: mensaje,
-					usuario: usuario,
-				),
-			);
-			_mensajes.sort((a, b) => a.fecha.compareTo(b.fecha));
-			await _saveMensajes();
+  Future<String> _emailActual(User user) async {
+    final wiSmile = await _leerWiSmile();
+    final emailWiSmile = (wiSmile['email'] as String? ?? '').trim();
+    if (emailWiSmile.isNotEmpty) return emailWiSmile;
+    final emailAuth = (user.email ?? '').trim();
+    return emailAuth;
+  }
 
-			setState(() {});
-			_textCtrl.clear();
-			_scrollEnd();
-		} catch (_) {
-			if (mounted) Notificacion.err(context, 'No se pudo enviar el mensaje');
-		} finally {
-			if (mounted) setState(() => _sending = false);
-		}
-	}
+  Future<Map<String, String>> _authHeaders() async {
+    final token = await _user?.getIdToken();
+    if (token == null || token.isEmpty) throw Exception('Sin token Firebase');
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+  }
 
-	DateTime _toDate(dynamic v) {
-		if (v is DateTime) return v;
-		if (v is String) return DateTime.tryParse(v) ?? DateTime.now();
-		return DateTime.now();
-	}
+  String _runQueryUrl() {
+    return 'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents:runQuery';
+  }
 
-	String _fmtFecha(DateTime dt) {
-		final d = dt.day.toString().padLeft(2, '0');
-		final m = dt.month.toString().padLeft(2, '0');
-		final y = dt.year;
-		final h = dt.hour.toString().padLeft(2, '0');
-		final min = dt.minute.toString().padLeft(2, '0');
-		return '$d/$m/$y $h:$min';
-	}
+  String _docUrl(String id) {
+    return 'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/wiMensajes/$id';
+  }
 
-	@override
-	Widget build(BuildContext context) {
-		final user = _user;
-		final email = user?.email;
-		if (user == null || email == null || email.isEmpty) {
-			return const Vacio(msg: 'Inicia sesión para usar Mensajes', ico: Icons.lock_rounded);
-		}
+  Map<String, dynamic> _toFirestoreFields(_MensajeDoc d, {bool serverTime = false}) {
+    final fields = <String, dynamic>{
+      'id': {'stringValue': d.id},
+      'email': {'stringValue': d.email},
+      'usuario': {'stringValue': d.usuario},
+      'mensaje': {'stringValue': d.mensaje},
+    };
+    fields['fecha'] = {
+      'timestampValue': serverTime
+          ? DateTime.now().toUtc().toIso8601String()
+          : d.fecha.toUtc().toIso8601String(),
+    };
+    return {'fields': fields};
+  }
 
-		if (_loading) {
-			return const Load(msg: 'Cargando mensajes...');
-		}
+  String _strField(Map<String, dynamic> fields, String key) {
+    final f = fields[key];
+    if (f is Map<String, dynamic>) {
+      final s = f['stringValue'];
+      if (s is String) return s;
+    }
+    return '';
+  }
 
-		return Column(
-			children: [
-				Row(
-					children: [
-						Text('Mensajes', style: AppStyle.h3),
-						const SizedBox(width: 8),
-						wiBox(Icons.chat_rounded, 'wiMensajes', AppCSS.primary),
-						const Spacer(),
-						wiBox(Icons.layers_rounded, '${_mensajes.length}', AppCSS.info),
-					],
-				),
-				const SizedBox(height: 8),
-				Expanded(
-					child: Container(
-						decoration: AppCSS.glass300,
-						child: _mensajes.isEmpty
-								? const Vacio(msg: 'No hay mensajes todavía', ico: Icons.chat_bubble_outline_rounded)
-								: ListView.builder(
-										controller: _scrollCtrl,
-										padding: const EdgeInsets.all(12),
-										itemCount: _mensajes.length,
-										itemBuilder: (context, i) {
-											final item = _mensajes[i];
-											final msg = item.mensaje.trim();
-											if (msg.isEmpty) return const SizedBox.shrink();
-											final mio = item.email.trim() == email;
-											final fecha = _toDate(item.fecha);
+  DateTime _tsField(Map<String, dynamic> fields, String key) {
+    final f = fields[key];
+    if (f is Map<String, dynamic>) {
+      final ts = f['timestampValue'];
+      if (ts is String) return DateTime.tryParse(ts) ?? DateTime.now();
+    }
+    return DateTime.now();
+  }
 
-											return Align(
-												alignment: mio ? Alignment.centerRight : Alignment.centerLeft,
-												child: Container(
-													constraints: const BoxConstraints(maxWidth: 560),
-													margin: const EdgeInsets.only(bottom: 8),
-													padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-													decoration: BoxDecoration(
-														color: mio ? AppCSS.primary.withValues(alpha: 0.18) : AppCSS.white,
-														borderRadius: BorderRadius.circular(12),
-														border: Border.all(color: AppCSS.border.withValues(alpha: 0.45)),
-													),
-													child: Column(
-														crossAxisAlignment: CrossAxisAlignment.start,
-														children: [
-															Text(item.usuario, style: AppStyle.sm.copyWith(fontWeight: FontWeight.w700, color: AppCSS.primary)),
-															const SizedBox(height: 2),
-															Text(msg, style: AppStyle.bdS),
-															const SizedBox(height: 4),
-															Text(_fmtFecha(fecha), style: AppStyle.sm),
-														],
-													),
-												),
-											);
-										},
-								),
-					),
-				),
-				const SizedBox(height: 10),
-				Row(
-					children: [
-						Expanded(
-							child: TextField(
-								controller: _textCtrl,
-								onSubmitted: (_) => _send(),
-								decoration: InputDecoration(
-									hintText: 'Escribe un mensaje...',
-									filled: true,
-									fillColor: AppCSS.white,
-									border: OutlineInputBorder(
-										borderRadius: BorderRadius.circular(12),
-										borderSide: BorderSide(color: AppCSS.border),
-									),
-								),
-							),
-						),
-						const SizedBox(width: 8),
-						FilledButton.icon(
-							onPressed: _sending ? null : _send,
-							icon: _sending
-								? const SizedBox(
-										width: 16,
-										height: 16,
-										child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-									)
-								: const Icon(Icons.send_rounded),
-							label: const Text('Enviar'),
-						),
-					],
-				),
-			],
-		);
-	}
+  List<_MensajeDoc> _parseRunQuery(String body) {
+    final raw = jsonDecode(body);
+    if (raw is! List) return [];
+    final out = <_MensajeDoc>[];
+    for (final item in raw) {
+      if (item is! Map<String, dynamic>) continue;
+      final doc = item['document'];
+      if (doc is! Map<String, dynamic>) continue;
+      final name = doc['name'] as String? ?? '';
+      final id = name.split('/').last;
+      final fields = doc['fields'];
+      if (fields is! Map<String, dynamic>) continue;
+      final mensaje = _strField(fields, 'mensaje').trim();
+      if (mensaje.isEmpty) continue;
+      out.add(
+        _MensajeDoc(
+          id: _strField(fields, 'id').trim().isEmpty ? id : _strField(fields, 'id').trim(),
+          email: _strField(fields, 'email').trim(),
+          usuario: _strField(fields, 'usuario').trim().isEmpty
+              ? 'Usuario'
+              : _strField(fields, 'usuario').trim(),
+          mensaje: mensaje,
+          fecha: _tsField(fields, 'fecha'),
+        ),
+      );
+    }
+    out.sort((a, b) => a.fecha.compareTo(b.fecha));
+    return out;
+  }
+
+  Future<void> _syncMensajes({bool silent = false}) async {
+    final user = _user;
+    if (user == null) return;
+    final email = await _emailActual(user);
+    if (email.isEmpty) return;
+    _activeEmail = email;
+    try {
+      final headers = await _authHeaders();
+      final body = jsonEncode({
+        'structuredQuery': {
+          'from': [
+            {'collectionId': 'wiMensajes'}
+          ],
+          'where': {
+            'fieldFilter': {
+              'field': {'fieldPath': 'email'},
+              'op': 'EQUAL',
+              'value': {'stringValue': email}
+            }
+          },
+          'limit': _limit
+        }
+      });
+      final res = await http.post(Uri.parse(_runQueryUrl()), headers: headers, body: body);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception('Firestore query error ${res.statusCode}');
+      }
+      _mensajes = _parseRunQuery(res.body);
+      if (!mounted) return;
+      setState(() => _online = true);
+      _scrollEnd();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _online = false);
+      if (!silent) Notificacion.wrn(context, 'Sin conexión a Firebase');
+    }
+  }
+
+  void _scrollEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollCtrl.hasClients) return;
+      _scrollCtrl.animateTo(
+        _scrollCtrl.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _send() async {
+    final user = _user;
+    if (user == null) return;
+    final email = await _emailActual(user);
+    final mensaje = _textCtrl.text.trim();
+    if (email.isEmpty || mensaje.isEmpty || _sending) return;
+    setState(() => _sending = true);
+
+    final id = 'm${DateTime.now().millisecondsSinceEpoch}';
+    final usuario = await _usuarioActual(user);
+    final local = _MensajeDoc(
+      id: id,
+      email: email,
+      usuario: usuario,
+      mensaje: mensaje,
+      fecha: DateTime.now(),
+    );
+    _mensajes = [..._mensajes, local]..sort((a, b) => a.fecha.compareTo(b.fecha));
+    _textCtrl.clear();
+    if (mounted) setState(() {});
+    _scrollEnd();
+
+    try {
+      final headers = await _authHeaders();
+      final res = await http.patch(
+        Uri.parse(_docUrl(id)),
+        headers: headers,
+        body: jsonEncode(_toFirestoreFields(local, serverTime: true)),
+      );
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception('Firestore write error ${res.statusCode}');
+      }
+      if (mounted) setState(() => _online = true);
+      await _syncMensajes(silent: true);
+    } catch (_) {
+      _mensajes.removeWhere((m) => m.id == id);
+      if (mounted) {
+        setState(() => _online = false);
+        Notificacion.err(context, 'Error al guardar en Firebase');
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _deleteMensaje(String id) async {
+    final ok = await Mensaje(context, titulo: 'Eliminar', msg: '¿Eliminar mensaje?');
+    if (ok != true) return;
+    final backup = List<_MensajeDoc>.from(_mensajes);
+    _mensajes.removeWhere((m) => m.id == id);
+    if (mounted) setState(() {});
+
+    try {
+      final headers = await _authHeaders();
+      final res = await http.delete(Uri.parse(_docUrl(id)), headers: headers);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception('Firestore delete error ${res.statusCode}');
+      }
+      if (mounted) setState(() => _online = true);
+    } catch (_) {
+      _mensajes = backup;
+      if (mounted) {
+        setState(() => _online = false);
+        Notificacion.err(context, 'Error al eliminar en Firebase');
+      }
+    }
+  }
+
+  Future<void> _copyMensaje(String txt) async {
+    if (txt.trim().isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: txt));
+    if (mounted) Notificacion.ok(context, 'Mensaje copiado');
+  }
+
+  String _hora(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  String _labelFecha(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final day = DateTime(dt.year, dt.month, dt.day);
+    if (day == today) return 'Hoy';
+    if (day == yesterday) return 'Ayer';
+    final d = dt.day.toString().padLeft(2, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final y = dt.year;
+    return '$d/$m/$y';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = _user;
+    final authEmail = (user?.email ?? '').trim();
+    if (user == null) {
+      return const Vacio(msg: 'Inicia sesión para usar Mensajes', ico: Icons.lock_rounded);
+    }
+    if (_loading) return const Load(msg: 'Cargando mensajes...');
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Text('Mensajes', style: AppStyle.h3),
+            const SizedBox(width: 8),
+            wiBox(Icons.chat_rounded, 'wiMensajes', AppCSS.primary),
+            const SizedBox(width: 8),
+            Text('${Saludar()} $_displayUsuario', style: AppStyle.sm),
+            const Spacer(),
+            wiBox(
+              _online ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+              _online ? 'Online' : 'Offline',
+              _online ? AppCSS.success : AppCSS.warning,
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: () => _syncMensajes(),
+              icon: const Icon(Icons.sync_rounded),
+              tooltip: 'Sincronizar',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: Container(
+            decoration: AppCSS.glass300,
+            child: _mensajes.isEmpty
+                ? const Vacio(msg: 'Sin mensajes aún', ico: Icons.chat_bubble_outline_rounded)
+                : ListView.builder(
+                    controller: _scrollCtrl,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _mensajes.length,
+                    itemBuilder: (context, i) {
+                      final item = _mensajes[i];
+                      final msg = item.mensaje.trim();
+                      if (msg.isEmpty) return const SizedBox.shrink();
+                      final mio = item.email.trim() == _activeEmail || item.email.trim() == authEmail;
+                      final fecha = item.fecha;
+                      final label = _labelFecha(fecha);
+                      final prevLabel = i > 0 ? _labelFecha(_mensajes[i - 1].fecha) : '';
+                      final showSep = i == 0 || label != prevLabel;
+                      return Column(
+                        children: [
+                          if (showSep)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Text(label, style: AppStyle.sm.copyWith(fontWeight: FontWeight.w700)),
+                            ),
+                          Align(
+                            alignment: mio ? Alignment.centerRight : Alignment.centerLeft,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => _copyMensaje(msg),
+                              child: Container(
+                                constraints: const BoxConstraints(maxWidth: 560),
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: mio ? AppCSS.primary.withValues(alpha: 0.18) : AppCSS.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: AppCSS.border.withValues(alpha: 0.45)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item.usuario,
+                                            style: AppStyle.sm.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                              color: AppCSS.primary,
+                                            ),
+                                          ),
+                                        ),
+                                        if (mio)
+                                          InkWell(
+                                            onTap: () => _deleteMensaje(item.id),
+                                            child: const Icon(Icons.delete_outline_rounded, size: 16),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(msg, style: AppStyle.bdS),
+                                    const SizedBox(height: 4),
+                                    Text(_hora(fecha), style: AppStyle.sm),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _textCtrl,
+                onSubmitted: (_) => _send(),
+                maxLength: 500,
+                decoration: InputDecoration(
+                  hintText: 'Escribe un mensaje...',
+                  filled: true,
+                  fillColor: AppCSS.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppCSS.border),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: _sending ? null : _send,
+              icon: _sending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded),
+              label: const Text('Enviar'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _MensajeDoc {
-	_MensajeDoc({
-		required this.email,
-		required this.fecha,
-		required this.id,
-		required this.mensaje,
-		required this.usuario,
-	});
+  _MensajeDoc({
+    required this.id,
+    required this.email,
+    required this.usuario,
+    required this.mensaje,
+    required this.fecha,
+  });
 
-	final String email;
-	final DateTime fecha;
-	final String id;
-	final String mensaje;
-	final String usuario;
-
-	Map<String, dynamic> toMap() => {
-			'email': email,
-			'fecha': fecha.toIso8601String(),
-			'id': id,
-			'mensaje': mensaje,
-			'usuario': usuario,
-		};
-
-	factory _MensajeDoc.fromMap(Map<String, dynamic> map) => _MensajeDoc(
-			email: (map['email'] as String? ?? '').trim(),
-			fecha: DateTime.tryParse(map['fecha'] as String? ?? '') ?? DateTime.now(),
-			id: (map['id'] as String? ?? '').trim(),
-			mensaje: (map['mensaje'] as String? ?? '').trim(),
-			usuario: (map['usuario'] as String? ?? 'Usuario').trim(),
-		);
+  final String id;
+  final String email;
+  final String usuario;
+  final String mensaje;
+  final DateTime fecha;
 }

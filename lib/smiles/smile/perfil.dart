@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -29,11 +30,20 @@ class _PerfilPageState extends State<PerfilPage> {
 	String? _photoPath;
 	bool _saving = false;
 
+	String _nombreCompleto(String? nombre, String? apellidos) {
+		final n = (nombre ?? '').trim();
+		final a = (apellidos ?? '').trim();
+		if (n.isEmpty) return a;
+		if (a.isEmpty) return n;
+		return '$n $a';
+	}
+
 	@override
 	void initState() {
 		super.initState();
 		_nameCtrl = TextEditingController(text: widget.initialName ?? 'Usuario');
 		_photoPath = widget.initialPhotoPath;
+		_loadWiSmileCache();
 	}
 
 	@override
@@ -43,7 +53,7 @@ class _PerfilPageState extends State<PerfilPage> {
 	}
 
 	Future<void> _pickPhoto() async {
-		final result = await FilePicker.platform.pickFiles(type: FileType.image, allowMultiple: false);
+		final result = await FilePicker.pickFiles(type: FileType.image, allowMultiple: false);
 		final path = result?.files.single.path;
 		if (path == null || path.isEmpty) return;
 		setState(() => _photoPath = path);
@@ -55,19 +65,77 @@ class _PerfilPageState extends State<PerfilPage> {
 		await _save();
 	}
 
+	Future<void> _loadWiSmileCache() async {
+		final prefs = await SharedPreferences.getInstance();
+		final raw = prefs.getString('wiSmile');
+		if (raw == null || raw.isEmpty) return;
+
+		try {
+			final data = jsonDecode(raw);
+			if (data is! Map<String, dynamic>) return;
+
+			final cachedName = (data['nombre'] as String?)?.trim();
+			final cachedLastName = (data['apellidos'] as String?)?.trim();
+			final cachedFullName = _nombreCompleto(cachedName, cachedLastName).trim();
+			final cachedImage = (data['imagen'] as String?)?.trim();
+
+			if (!mounted) return;
+			setState(() {
+				if (cachedFullName.isNotEmpty) {
+					_nameCtrl.text = cachedFullName;
+				}
+				if (cachedImage != null && cachedImage.isNotEmpty) {
+					_photoPath = cachedImage;
+				}
+			});
+		} catch (_) {
+			// Cache inválido: se ignora para no romper flujo de perfil.
+		}
+	}
+
 	Future<void> _save() async {
 		setState(() => _saving = true);
 		final prefs = await SharedPreferences.getInstance();
-		final name = _nameCtrl.text.trim().isEmpty ? 'Usuario' : _nameCtrl.text.trim();
+		final fullName = _nameCtrl.text.trim().isEmpty ? 'Usuario' : _nameCtrl.text.trim();
+		final email = (widget.userEmail ?? '').trim();
+		final chunks = fullName.split(RegExp(r'\s+')).where((v) => v.trim().isNotEmpty).toList();
+		final nombre = chunks.isEmpty ? 'Usuario' : chunks.first;
+		final apellidos = chunks.length > 1 ? chunks.sublist(1).join(' ') : '';
+		final displayName = _nombreCompleto(nombre, apellidos).trim();
 
-		await prefs.setString('wi_profile_name', name);
+		Map<String, dynamic> wiSmile = {};
+		final raw = prefs.getString('wiSmile');
+		if (raw != null && raw.isNotEmpty) {
+			try {
+				final decoded = jsonDecode(raw);
+				if (decoded is Map<String, dynamic>) wiSmile = decoded;
+			} catch (_) {
+				wiSmile = {};
+			}
+		}
+
+		final usuarioActual = (wiSmile['usuario'] as String?)?.trim();
+		final usuarioPorEmail = email.contains('@') ? email.split('@').first : email;
+		final usuario = usuarioActual != null && usuarioActual.isNotEmpty
+				? usuarioActual
+				: (usuarioPorEmail.isNotEmpty ? usuarioPorEmail : displayName.toLowerCase().replaceAll(' ', ''));
+
+		await prefs.setString('wi_profile_name', displayName);
 		if (_photoPath != null && _photoPath!.isNotEmpty) {
 			await prefs.setString('wi_profile_photo', _photoPath!);
 		} else {
 			await prefs.remove('wi_profile_photo');
 		}
 
-		widget.onChanged?.call(_photoPath, name);
+		wiSmile['nombre'] = nombre;
+		wiSmile['apellidos'] = apellidos;
+		wiSmile['email'] = email;
+		wiSmile['usuario'] = usuario;
+		wiSmile['imagen'] = _photoPath ?? '';
+		wiSmile['rol'] = (wiSmile['rol'] as String?)?.trim().isNotEmpty == true ? wiSmile['rol'] : 'smile';
+		await prefs.setString('wiSmile', jsonEncode(wiSmile));
+
+		widget.onChanged?.call(_photoPath, displayName);
 		if (mounted) {
 			setState(() => _saving = false);
 			Notificacion.ok(context, 'Perfil actualizado');

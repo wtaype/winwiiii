@@ -59,10 +59,10 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       _displayName = (savedName != null && savedName.isNotEmpty)
           ? savedName
           : (user?.displayName?.trim().isNotEmpty ?? false)
-              ? user!.displayName!.trim()
-              : (emailName != null && emailName.isNotEmpty)
-                  ? emailName
-                  : 'Usuario';
+          ? user!.displayName!.trim()
+          : (emailName != null && emailName.isNotEmpty)
+          ? emailName
+          : 'Usuario';
     });
   }
 
@@ -110,31 +110,21 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                     _topBar(user),
                     const SizedBox(height: 10),
                     Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final showRight = constraints.maxWidth > 1080;
-                          return Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppCSS.white.withValues(alpha: 0.72),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: AppCSS.white.withValues(alpha: 0.65)),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(14),
-                                    child: IndexedStack(index: _indiceActual, children: paginas),
-                                  ),
-                                ),
-                              ),
-                              if (showRight) ...[
-                                const SizedBox(width: 10),
-                                _rightPanel(user),
-                              ],
-                            ],
-                          );
-                        },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppCSS.white.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppCSS.white.withValues(alpha: 0.65),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: IndexedStack(
+                            index: _indiceActual,
+                            children: paginas,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -155,26 +145,46 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       decoration: BoxDecoration(
         color: AppCSS.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, 8))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              AppCSS.logoCirculo(size: 42),
+              ClipOval(
+                child: Image.asset(
+                  'assets\\smile.avif',
+                  width: 42,
+                  height: 42,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => AppCSS.logoCirculo(size: 42),
+                ),
+              ),
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(wii.app, style: AppStyle.h3.copyWith(color: AppCSS.primary)),
+                  Text(
+                    wii.app,
+                    style: AppStyle.h3.copyWith(color: AppCSS.primary),
+                  ),
                   Text(wiDia(), style: AppStyle.sm),
                 ],
               ),
             ],
           ),
           const SizedBox(height: 14),
-          Text('Navegación', style: AppStyle.bdS.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            'Navegación',
+            style: AppStyle.bdS.copyWith(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 8),
           Expanded(
             child: ListView.separated(
@@ -188,22 +198,37 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                   onTap: () => _goTo(i),
                   child: AnimatedContainer(
                     duration: AppCSS.trans1,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
-                      color: active ? AppCSS.primary.withValues(alpha: 0.14) : Colors.transparent,
+                      color: active
+                          ? AppCSS.primary.withValues(alpha: 0.14)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: active ? AppCSS.primary.withValues(alpha: 0.35) : AppCSS.border.withValues(alpha: 0.2)),
+                      border: Border.all(
+                        color: active
+                            ? AppCSS.primary.withValues(alpha: 0.35)
+                            : AppCSS.border.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        Icon(item.$2, size: 20, color: active ? AppCSS.primary : AppCSS.text500),
+                        Icon(
+                          item.$2,
+                          size: 20,
+                          color: active ? AppCSS.primary : AppCSS.text500,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             item.$1,
                             style: AppStyle.bdS.copyWith(
                               color: active ? AppCSS.primary : AppCSS.text500,
-                              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                              fontWeight: active
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
                             ),
                           ),
                         ),
@@ -229,7 +254,13 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         color: AppCSS.white.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppCSS.white.withValues(alpha: 0.7)),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 14, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -259,85 +290,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     );
   }
 
-  Widget _rightPanel(User? user) {
-    return Container(
-      width: 305,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppCSS.white.withValues(alpha: 0.86),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppCSS.white.withValues(alpha: 0.7)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: AppCSS.glass300,
-              child: Row(
-                children: [
-                  _avatar(user, 24),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_displayName, style: AppStyle.bdS.copyWith(fontWeight: FontWeight.w700)),
-                        Text(user?.email ?? 'Sin correo', style: AppStyle.sm, overflow: TextOverflow.ellipsis),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            wiCard(
-              margin: EdgeInsets.zero,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Secciones', style: AppStyle.bdS.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  _quickTile(Icons.home_rounded, 'Inicio', 'Resumen general', 0),
-                  _quickTile(Icons.note_alt_rounded, 'Notas', 'Colección wiNotas', 5),
-                  _quickTile(Icons.message_rounded, 'Mensajes', 'Colección wiMensajes', 6),
-                  _quickTile(Icons.person_rounded, 'Perfil', 'Datos de usuario', 7),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            wiCard(
-              margin: EdgeInsets.zero,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Estado', style: AppStyle.bdS.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      wiStat('8', 'Módulos', Icons.dashboard_rounded, AppCSS.primary),
-                      const SizedBox(width: 8),
-                      wiStat('Cloud', 'Firestore', Icons.cloud_done_rounded, AppCSS.info),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            wiCard(
-              margin: EdgeInsets.zero,
-              child: Text(
-                'Estructura en layout continuo: navegación izquierda y contenido central sin modales.',
-                style: AppStyle.bdS,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _headerAction(String text, IconData icon, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -345,57 +297,21 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         onPressed: onTap,
         icon: Icon(icon, size: 17),
         label: Text(text),
-        style: OutlinedButton.styleFrom(backgroundColor: AppCSS.white.withValues(alpha: 0.75)),
-      ),
-    );
-  }
-
-  Widget _quickTile(IconData icon, String title, String subtitle, int index) {
-    final active = _indiceActual == index;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: InkWell(
-        onTap: () => _goTo(index),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: active ? AppCSS.primary.withValues(alpha: 0.14) : AppCSS.white.withValues(alpha: 0.65),
-            border: Border.all(color: active ? AppCSS.primary.withValues(alpha: 0.35) : AppCSS.border.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 18, color: active ? AppCSS.primary : AppCSS.text500),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: AppStyle.bdS.copyWith(
-                        color: active ? AppCSS.primary : AppCSS.text500,
-                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                    Text(subtitle, style: AppStyle.sm),
-                  ],
-                ),
-              ),
-              const Icon(Icons.chevron_right_rounded, size: 18),
-            ],
-          ),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: AppCSS.white.withValues(alpha: 0.75),
         ),
       ),
     );
   }
 
   Widget _avatar(User? user, double radius) {
-    final initial = (_displayName.isNotEmpty ? _displayName[0] : 'U').toUpperCase();
+    final initial = (_displayName.isNotEmpty ? _displayName[0] : 'U')
+        .toUpperCase();
 
     ImageProvider? provider;
-    if (_photoPath != null && _photoPath!.isNotEmpty && File(_photoPath!).existsSync()) {
+    if (_photoPath != null &&
+        _photoPath!.isNotEmpty &&
+        File(_photoPath!).existsSync()) {
       provider = FileImage(File(_photoPath!));
     } else if (user?.photoURL != null && user!.photoURL!.isNotEmpty) {
       provider = NetworkImage(user.photoURL!);
@@ -405,11 +321,21 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       return CircleAvatar(
         radius: radius,
         backgroundColor: AppCSS.primary.withValues(alpha: 0.2),
-        child: Text(initial, style: AppStyle.bdS.copyWith(color: AppCSS.primary, fontWeight: FontWeight.w700)),
+        child: Text(
+          initial,
+          style: AppStyle.bdS.copyWith(
+            color: AppCSS.primary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       );
     }
 
-    return CircleAvatar(radius: radius, backgroundImage: provider, backgroundColor: AppCSS.white);
+    return CircleAvatar(
+      radius: radius,
+      backgroundImage: provider,
+      backgroundColor: AppCSS.white,
+    );
   }
 
   void _goTo(int index) {
