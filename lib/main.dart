@@ -25,7 +25,7 @@ class WinwiiApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: wii.apptitulo,
+      title: wii.app,
       debugShowCheckedModeBanner: false,
       theme: AppStyle.tema,
       home: const AuthBootstrap(),

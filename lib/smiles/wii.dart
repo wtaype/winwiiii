@@ -1,11 +1,9 @@
 class wii {
-  static const String app = 'Winwii';
-  static const String apptitulo = 'Winwii';
   static const String id = 'winwii';
+  static const String app = 'Winwii';
   static const String repo = 'winwiiii';
   static const String desc = 'Gestiona como creador de contenidos profesionales';
   static const int lanzamiento = 2026;
-  static const String autor = '@wilder.taype';
   static const String by = '@wilder.taype';
   static const String link = 'https://wtaype.github.io/';
   static const String version = 'v9.10';

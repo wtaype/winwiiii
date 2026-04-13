@@ -21,7 +21,7 @@ class AcercaPage extends StatelessWidget {
 						),
 						const SizedBox(height: 10),
 						Text('Versión ${wii.version}', style: AppStyle.bdS),
-						Text('Autor ${wii.autor}', style: AppStyle.sm),
+						Text('Autor ${wii.by}', style: AppStyle.sm),
 					],
 				),
 			),
