@@ -1,0 +1,69 @@
+name: winwii
+description: "Winwii - Gestor profesional de contenidos multimedia"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+  flutter: ">=3.24.0"
+
+# ====== DEPENDENCIAS PRINCIPALES ======
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Gestión de archivos y sistema
+  file_picker: ^10.3.8
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  
+  # Procesamiento de soltar y arrastrar
+  desktop_drop: ^0.7.0
+  cross_file: ^0.3.4+2
+
+  # Procesamiento de video y audio
+  process_run: ^1.2.1
+  
+  # Interfaz de usuario
+  google_fonts: ^7.0.0
+  flutter_animate: ^4.5.0
+  
+  # Utilidades
+  intl: ^0.20.2
+  url_launcher: ^6.3.2
+  shared_preferences: ^2.5.3
+  window_manager: ^0.5.1
+  firebase_core: ^4.7.0
+  firebase_auth: ^6.4.0
+
+# ====== DEPENDENCIAS DE DESARROLLO ======
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  msix: ^3.16.8
+
+# ====== CONFIGURACIÓN DE ASSETS Y BUILD ======
+# Icono de la aplicación
+flutter_launcher_icons:
+  windows:
+    generate: true
+    image_path: "assets/iconos.png"
+    icon_size: 256
+
+# Instalador MSIX
+msix_config:
+  display_name: WIMP3
+  publisher_display_name: Wilder Taype
+  identity_name: com.winwii.converter
+  msix_version: 1.0.0.0
+  logo_path: assets/iconos.png
+  capabilities: 'internetClient,videosLibrary,musicLibrary,picturesLibrary'
+
+# Assets del proyecto
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/ffmpeg/
+    - assets/iconos.png
