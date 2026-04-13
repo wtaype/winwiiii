@@ -34,10 +34,10 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     ('Extraer', Icons.auto_awesome_motion_rounded),
     ('Emojis', Icons.emoji_emotions_rounded),
     ('Planificar', Icons.event_note_rounded),
-    ('Acerca', Icons.info_rounded),
     ('Notas', Icons.note_alt_rounded),
     ('Mensajes', Icons.message_rounded),
     ('Perfil', Icons.person_rounded),
+    ('Acerca', Icons.info_rounded),
   ];
 
   @override
@@ -74,7 +74,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       const ExtraerPage(),
       const EmojisPage(),
       const PlanificarPage(),
-      const AcercaPage(),
       const NotasPage(),
       const MensajesPage(),
       PerfilPage(
@@ -88,6 +87,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           });
         },
       ),
+      const AcercaPage(),
     ];
 
     return Scaffold(
@@ -273,11 +273,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
             ],
           ),
           const Spacer(),
-          _headerAction('Notas', Icons.note_alt_rounded, () => _goTo(5)),
-          _headerAction('Mensajes', Icons.message_rounded, () => _goTo(6)),
-          _headerAction('Perfil', Icons.person_rounded, () => _goTo(7)),
+          _headerAction('Notas', Icons.note_alt_rounded, () => _goTo(4)),
+          _headerAction('Mensajes', Icons.message_rounded, () => _goTo(5)),
+          _headerAction('Perfil', Icons.person_rounded, () => _goTo(6)),
           const SizedBox(width: 8),
-          GestureDetector(onTap: () => _goTo(7), child: _avatar(user, 18)),
+          GestureDetector(onTap: () => _goTo(6), child: _avatar(user, 18)),
           const SizedBox(width: 8),
           FilledButton.icon(
             onPressed: () => FirebaseAuth.instance.signOut(),
@@ -344,13 +344,15 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   }
 
   String _sectionHint(int index) {
-    switch (index) {
-      case 5:
+      switch (index) {
+      case 4:
         return 'Notas en colección wiNotas';
-      case 6:
+      case 5:
         return 'Mensajes en colección wiMensajes';
-      case 7:
+      case 6:
         return 'Gestiona tu perfil';
+      case 7:
+        return 'Información de la app';
       default:
         return 'Panel profesional';
     }
