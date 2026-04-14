@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:process_run/shell.dart';
@@ -139,6 +140,30 @@ class _ExtraerPageState extends State<ExtraerPage> {
   }
 
   String _ffmpegPath() => p.join(Directory.current.path, 'data', 'flutter_assets', 'assets', 'ffmpeg', 'ffmpeg.exe');
+
+  String _toFileUri(String filePath) => Uri.file(filePath).toString();
+
+  Future<void> _openInChrome(String filePath) async {
+    final uri = _toFileUri(filePath);
+    try {
+      await Process.run('cmd', ['/c', 'start', '', 'chrome', uri]);
+      if (!mounted) return;
+      Notificacion.ok(context, 'Abriendo en Google Chrome');
+    } catch (_) {
+      if (!mounted) return;
+      Notificacion.err(context, 'No se pudo abrir en Chrome');
+    }
+  }
+
+  Future<void> _copyOutputPath(String filePath) async {
+    await Clipboard.setData(ClipboardData(text: filePath));
+    if (!mounted) return;
+    Notificacion.ok(context, 'Ruta copiada');
+  }
+
+  Future<void> _openInExplorer(String filePath) async {
+    await Process.run('explorer', ['/select,', filePath]);
+  }
 
   Future<void> _extractAudio() async {
     if (_videoPath == null) {
@@ -502,9 +527,19 @@ class _ExtraerPageState extends State<ExtraerPage> {
                           ),
                         ),
                         IconButton(
+                          tooltip: 'Abrir en Google Chrome',
+                          onPressed: () => _openInChrome(_outputPath!),
+                          icon: const Icon(Icons.language_rounded, color: AppCSS.primary),
+                        ),
+                        IconButton(
+                          tooltip: 'Copiar ruta',
+                          onPressed: () => _copyOutputPath(_outputPath!),
+                          icon: const Icon(Icons.copy_rounded, color: AppCSS.info),
+                        ),
+                        IconButton(
                           tooltip: 'Abrir en carpeta',
-                          onPressed: () => Process.run('explorer', ['/select,', _outputPath!]),
-                          icon: const Icon(Icons.visibility_rounded, color: AppCSS.primary),
+                          onPressed: () => _openInExplorer(_outputPath!),
+                          icon: const Icon(Icons.folder_open_rounded, color: AppCSS.success),
                         ),
                       ],
                     ),
