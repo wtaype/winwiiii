@@ -69,26 +69,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final paginas = [
-      InicioPage(onOpen: _goTo),
-      const ExtraerPage(),
-      const EmojisPage(),
-      const PlanificarPage(),
-      const NotasPage(),
-      const MensajesPage(),
-      PerfilPage(
-        initialName: _displayName,
-        initialPhotoPath: _photoPath,
-        userEmail: user?.email,
-        onChanged: (photo, name) {
-          setState(() {
-            _photoPath = photo;
-            _displayName = name;
-          });
-        },
-      ),
-      const AcercaPage(),
-    ];
 
     return Scaffold(
       body: Container(
@@ -120,10 +100,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(14),
-                          child: IndexedStack(
-                            index: _indiceActual,
-                            children: paginas,
-                          ),
+                          child: _buildCurrentPage(user),
                         ),
                       ),
                     ),
@@ -135,6 +112,39 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
         ),
       ),
     );
+  }
+
+  Widget _buildCurrentPage(User? user) {
+    switch (_indiceActual) {
+      case 0:
+        return InicioPage(onOpen: _goTo);
+      case 1:
+        return const ExtraerPage();
+      case 2:
+        return const EmojisPage();
+      case 3:
+        return const PlanificarPage();
+      case 4:
+        return const NotasPage();
+      case 5:
+        return const MensajesPage();
+      case 6:
+        return PerfilPage(
+          initialName: _displayName,
+          initialPhotoPath: _photoPath,
+          userEmail: user?.email,
+          onChanged: (photo, name) {
+            setState(() {
+              _photoPath = photo;
+              _displayName = name;
+            });
+          },
+        );
+      case 7:
+        return const AcercaPage();
+      default:
+        return InicioPage(onOpen: _goTo);
+    }
   }
 
   Widget _leftMenu() {
