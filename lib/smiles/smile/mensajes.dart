@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../firebase_options.dart';
 import '../wicss.dart';
 import '../widev.dart';
@@ -54,9 +52,10 @@ class _MensajesPageState extends State<MensajesPage> {
       _activeEmail = await _emailActual(user);
     }
     await _loadPerfil();
-    await _syncMensajes(silent: true);
+    await _loadCache();
     if (!mounted) return;
     setState(() => _loading = false);
+    await _syncMensajes(silent: true);
     _startRealtime();
     _scrollEnd();
   }
@@ -122,8 +121,7 @@ class _MensajesPageState extends State<MensajesPage> {
     final wiSmile = await _leerWiSmile();
     final emailWiSmile = (wiSmile['email'] as String? ?? '').trim();
     if (emailWiSmile.isNotEmpty) return emailWiSmile;
-    final emailAuth = (user.email ?? '').trim();
-    return emailAuth;
+    return (user.email ?? '').trim();
   }
 
   Future<Map<String, String>> _authHeaders() async {
@@ -143,19 +141,49 @@ class _MensajesPageState extends State<MensajesPage> {
     return 'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/wiMensajes/$id';
   }
 
-  Map<String, dynamic> _toFirestoreFields(_MensajeDoc d, {bool serverTime = false}) {
-    final fields = <String, dynamic>{
-      'id': {'stringValue': d.id},
-      'email': {'stringValue': d.email},
-      'usuario': {'stringValue': d.usuario},
-      'mensaje': {'stringValue': d.mensaje},
-    };
-    fields['fecha'] = {
-      'timestampValue': serverTime
-          ? DateTime.now().toUtc().toIso8601String()
-          : d.fecha.toUtc().toIso8601String(),
-    };
-    return {'fields': fields};
+  String _cacheKey(String email) => 'wiMensajesCache:$email';
+
+  Future<void> _loadCache() async {
+    final email = _activeEmail.trim();
+    if (email.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cacheKey(email));
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final parsed = decoded
+          .whereType<Map<String, dynamic>>()
+          .map(_MensajeDoc.fromJson)
+          .where((m) => m.mensaje.trim().isNotEmpty)
+          .toList()
+        ..sort((a, b) => a.fecha.compareTo(b.fecha));
+      _mensajes = parsed;
+      if (!mounted) return;
+      setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _saveCache() async {
+    final email = _activeEmail.trim();
+    if (email.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final payload = _mensajes.map((e) => e.toJson()).toList();
+    await prefs.setString(_cacheKey(email), jsonEncode(payload));
+  }
+
+  bool _sameList(List<_MensajeDoc> a, List<_MensajeDoc> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id ||
+          a[i].email != b[i].email ||
+          a[i].usuario != b[i].usuario ||
+          a[i].mensaje != b[i].mensaje ||
+          a[i].fecha.millisecondsSinceEpoch != b[i].fecha.millisecondsSinceEpoch) {
+        return false;
+      }
+    }
+    return true;
   }
 
   String _strField(Map<String, dynamic> fields, String key) {
@@ -194,9 +222,7 @@ class _MensajesPageState extends State<MensajesPage> {
         _MensajeDoc(
           id: _strField(fields, 'id').trim().isEmpty ? id : _strField(fields, 'id').trim(),
           email: _strField(fields, 'email').trim(),
-          usuario: _strField(fields, 'usuario').trim().isEmpty
-              ? 'Usuario'
-              : _strField(fields, 'usuario').trim(),
+          usuario: _strField(fields, 'usuario').trim().isEmpty ? 'Usuario' : _strField(fields, 'usuario').trim(),
           mensaje: mensaje,
           fecha: _tsField(fields, 'fecha'),
         ),
@@ -229,14 +255,21 @@ class _MensajesPageState extends State<MensajesPage> {
           'limit': _limit
         }
       });
+
       final res = await http.post(Uri.parse(_runQueryUrl()), headers: headers, body: body);
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception('Firestore query error ${res.statusCode}');
       }
-      _mensajes = _parseRunQuery(res.body);
+
+      final incoming = _parseRunQuery(res.body);
+      final changed = !_sameList(_mensajes, incoming);
+      if (changed) {
+        _mensajes = incoming;
+        await _saveCache();
+      }
       if (!mounted) return;
       setState(() => _online = true);
-      _scrollEnd();
+      if (changed) _scrollEnd();
     } catch (_) {
       if (!mounted) return;
       setState(() => _online = false);
@@ -274,6 +307,7 @@ class _MensajesPageState extends State<MensajesPage> {
     );
     _mensajes = [..._mensajes, local]..sort((a, b) => a.fecha.compareTo(b.fecha));
     _textCtrl.clear();
+    await _saveCache();
     if (mounted) setState(() {});
     _scrollEnd();
 
@@ -282,7 +316,15 @@ class _MensajesPageState extends State<MensajesPage> {
       final res = await http.patch(
         Uri.parse(_docUrl(id)),
         headers: headers,
-        body: jsonEncode(_toFirestoreFields(local, serverTime: true)),
+        body: jsonEncode({
+          'fields': {
+            'id': {'stringValue': local.id},
+            'email': {'stringValue': local.email},
+            'usuario': {'stringValue': local.usuario},
+            'mensaje': {'stringValue': local.mensaje},
+            'fecha': {'timestampValue': DateTime.now().toUtc().toIso8601String()},
+          }
+        }),
       );
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception('Firestore write error ${res.statusCode}');
@@ -291,6 +333,7 @@ class _MensajesPageState extends State<MensajesPage> {
       await _syncMensajes(silent: true);
     } catch (_) {
       _mensajes.removeWhere((m) => m.id == id);
+      await _saveCache();
       if (mounted) {
         setState(() => _online = false);
         Notificacion.err(context, 'Error al guardar en Firebase');
@@ -305,6 +348,7 @@ class _MensajesPageState extends State<MensajesPage> {
     if (ok != true) return;
     final backup = List<_MensajeDoc>.from(_mensajes);
     _mensajes.removeWhere((m) => m.id == id);
+    await _saveCache();
     if (mounted) setState(() {});
 
     try {
@@ -316,6 +360,7 @@ class _MensajesPageState extends State<MensajesPage> {
       if (mounted) setState(() => _online = true);
     } catch (_) {
       _mensajes = backup;
+      await _saveCache();
       if (mounted) {
         setState(() => _online = false);
         Notificacion.err(context, 'Error al eliminar en Firebase');
@@ -508,4 +553,22 @@ class _MensajeDoc {
   final String usuario;
   final String mensaje;
   final DateTime fecha;
+
+  factory _MensajeDoc.fromJson(Map<String, dynamic> json) {
+    return _MensajeDoc(
+      id: (json['id'] as String? ?? '').trim(),
+      email: (json['email'] as String? ?? '').trim(),
+      usuario: (json['usuario'] as String? ?? 'Usuario').trim(),
+      mensaje: (json['mensaje'] as String? ?? '').trim(),
+      fecha: DateTime.tryParse((json['fecha'] as String?) ?? '') ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'email': email,
+        'usuario': usuario,
+        'mensaje': mensaje,
+        'fecha': fecha.toUtc().toIso8601String(),
+      };
 }
