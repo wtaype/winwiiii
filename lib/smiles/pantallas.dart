@@ -166,28 +166,21 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipOval(
                 child: Image.asset(
-                  'assets\\smile.avif',
+                  'assets/iconos.png',
                   width: 42,
                   height: 42,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => AppCSS.logoCirculo(size: 42),
+                  errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_rounded, size: 42, color: AppCSS.primary),
                 ),
               ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    wii.app,
-                    style: AppStyle.h3.copyWith(color: AppCSS.primary),
-                  ),
-                  Text(wiDia(), style: AppStyle.sm),
-                ],
-              ),
+              const SizedBox(height: 8),
+              Text(wii.app, style: AppStyle.h3.copyWith(color: AppCSS.primary)),
+              Text(wiDia(), style: AppStyle.sm),
             ],
           ),
           const SizedBox(height: 14),
