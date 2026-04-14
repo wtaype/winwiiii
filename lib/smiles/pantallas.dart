@@ -268,7 +268,6 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_menu[_indiceActual].$1, style: AppStyle.h3),
               Text(_sectionHint(_indiceActual), style: AppStyle.sm),
             ],
           ),

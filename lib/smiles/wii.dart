@@ -6,17 +6,17 @@ class wii {
   static const int lanzamiento = 2026;
   static const String by = '@wilder.taype';
   static const String link = 'https://wtaype.github.io/';
-  static const String version = 'v9.10';
+  static const String version = 'v10.10';
 }
 
 /** ACTUALIZACIÓN PRINCIPAL ONE DEV [MAIN] (1)
-git add . ; git commit -m "Actualizacion Principal v9.10.10" ; git push origin main
+git add . ; git commit -m "Actualizacion Principal v10.10.10" ; git push origin main
 
 //  Actualizar versiones de seguridad [TAG NUEVO] (2)
-git tag v9 -m "Version v9" ; git push origin v9
+git tag v10 -m "Version v10" ; git push origin v10
 
 // Actualizar versiones de seguridad [TAG REMPLAZO] (3)
-git tag -d v9 ; git tag v9 -m "Version v9 actualizada" ; git push origin v9 --force
+git tag -d v10 ; git tag v10 -m "Version v10 actualizada" ; git push origin v10 --force
 
 // Compiplacion + exe windows
 flutter build windows --release
