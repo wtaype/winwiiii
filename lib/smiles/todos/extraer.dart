@@ -557,9 +557,9 @@ class _ExtraerPageState extends State<ExtraerPage> {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(flex: 29, child: wiCard(child: _leftPanel())),
+                    Expanded(child: wiCard(child: _leftPanel())),
                     const SizedBox(width: 10),
-                    Expanded(flex: 70, child: wiCard(child: _rightPanel())),
+                    Expanded(child: wiCard(child: _rightPanel())),
                   ],
                 );
               },

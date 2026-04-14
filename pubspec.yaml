@@ -33,7 +33,6 @@ dependencies:
   url_launcher: ^6.3.2
   shared_preferences: ^2.5.3
   http: ^1.2.2
-  window_manager: ^0.5.1
   firebase_core: ^4.7.0
   firebase_auth: ^6.4.0
 

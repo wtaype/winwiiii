@@ -25,9 +25,11 @@ class _NotasPageState extends State<NotasPage> {
   bool _pin = false;
   bool _loading = true;
   bool _saving = false;
+  bool _syncing = false;
   bool _online = false;
   String _displayUsuario = 'Usuario';
   String _activeEmail = '';
+  DateTime? _lastSyncAt;
   Timer? _realtimeTimer;
 
   static const _colores = ['Cielo', 'Dulce', 'Paz', 'Mora', 'Sol'];
@@ -56,9 +58,10 @@ class _NotasPageState extends State<NotasPage> {
       _activeEmail = await _emailActual(user);
     }
     await _loadPerfil();
-    await _syncNotas(silent: true);
+    await _loadCache();
     if (!mounted) return;
     setState(() => _loading = false);
+    await _syncNotas(silent: true);
     _startRealtime();
   }
 
@@ -153,6 +156,51 @@ class _NotasPageState extends State<NotasPage> {
     return 'https://firestore.googleapis.com/v1/projects/$_projectId/databases/(default)/documents/wiNotas/$id';
   }
 
+  String _cacheKey(String email) => 'wiNotasCache:$email';
+
+  Future<void> _loadCache() async {
+    final email = _activeEmail.trim();
+    if (email.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cacheKey(email));
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      final parsed = decoded.whereType<Map<String, dynamic>>().map(_NotaDoc.fromJson).toList();
+      _notas
+        ..clear()
+        ..addAll(parsed);
+      if (!mounted) return;
+      setState(() {});
+    } catch (_) {}
+  }
+
+  Future<void> _saveCache() async {
+    final email = _activeEmail.trim();
+    if (email.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final payload = _notas.map((e) => e.toJson()).toList();
+    await prefs.setString(_cacheKey(email), jsonEncode(payload));
+  }
+
+  bool _sameList(List<_NotaDoc> a, List<_NotaDoc> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id ||
+          a[i].email != b[i].email ||
+          a[i].usuario != b[i].usuario ||
+          a[i].titulo != b[i].titulo ||
+          a[i].contenido != b[i].contenido ||
+          a[i].color != b[i].color ||
+          a[i].pin != b[i].pin ||
+          a[i].fecha.millisecondsSinceEpoch != b[i].fecha.millisecondsSinceEpoch) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Map<String, dynamic> _toFirestoreFields(_NotaDoc d, {bool serverTime = false}) {
     return {
       'fields': {
@@ -224,14 +272,30 @@ class _NotasPageState extends State<NotasPage> {
         ),
       );
     }
+    out.sort((a, b) {
+      final ap = a.pin ? 1 : 0;
+      final bp = b.pin ? 1 : 0;
+      if (ap != bp) return bp.compareTo(ap);
+      final dateCmp = b.fecha.compareTo(a.fecha);
+      if (dateCmp != 0) return dateCmp;
+      return a.id.compareTo(b.id);
+    });
     return out;
   }
 
   Future<void> _syncNotas({bool silent = false}) async {
+    if (_syncing) return;
+    if (mounted) setState(() => _syncing = true);
     final user = _user;
-    if (user == null) return;
+    if (user == null) {
+      if (mounted) setState(() => _syncing = false);
+      return;
+    }
     final email = await _emailActual(user);
-    if (email.isEmpty) return;
+    if (email.isEmpty) {
+      if (mounted) setState(() => _syncing = false);
+      return;
+    }
     _activeEmail = email;
     try {
       final headers = await _authHeaders();
@@ -254,15 +318,25 @@ class _NotasPageState extends State<NotasPage> {
       if (res.statusCode < 200 || res.statusCode >= 300) {
         throw Exception('Firestore query error ${res.statusCode}');
       }
-      _notas
-        ..clear()
-        ..addAll(_parseRunQuery(res.body));
+      final incoming = _parseRunQuery(res.body);
+      final changed = !_sameList(_notas, incoming);
+      if (changed) {
+        _notas
+          ..clear()
+          ..addAll(incoming);
+        await _saveCache();
+      }
       if (!mounted) return;
-      setState(() => _online = true);
+      setState(() {
+        _online = true;
+        _lastSyncAt = DateTime.now();
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() => _online = false);
       if (!silent) Notificacion.wrn(context, 'Sin conexión a Firebase');
+    } finally {
+      if (mounted) setState(() => _syncing = false);
     }
   }
 
@@ -288,6 +362,7 @@ class _NotasPageState extends State<NotasPage> {
       fecha: DateTime.now(),
     );
     _notas.insert(0, local);
+    await _saveCache();
     if (mounted) {
       setState(() {
         _tituloCtrl.clear();
@@ -311,6 +386,7 @@ class _NotasPageState extends State<NotasPage> {
       await _syncNotas(silent: true);
     } catch (_) {
       _notas.removeWhere((n) => n.id == docId);
+      await _saveCache();
       if (mounted) {
         setState(() => _online = false);
         Notificacion.err(context, 'No se pudo guardar la nota');
@@ -325,6 +401,7 @@ class _NotasPageState extends State<NotasPage> {
     final before = _notas[index];
     final next = before.copyWith(pin: !before.pin);
     _notas[index] = next;
+    await _saveCache();
     if (mounted) setState(() {});
     try {
       final headers = await _authHeaders();
@@ -340,6 +417,7 @@ class _NotasPageState extends State<NotasPage> {
       await _syncNotas(silent: true);
     } catch (_) {
       _notas[index] = before;
+      await _saveCache();
       if (mounted) {
         setState(() => _online = false);
         Notificacion.err(context, 'No se pudo actualizar pin');
@@ -399,6 +477,7 @@ class _NotasPageState extends State<NotasPage> {
       color: _normalizarColor(color),
     );
     _notas[index] = edited;
+    await _saveCache();
     if (mounted) setState(() {});
     try {
       final headers = await _authHeaders();
@@ -414,6 +493,7 @@ class _NotasPageState extends State<NotasPage> {
       await _syncNotas(silent: true);
     } catch (_) {
       _notas[index] = base;
+      await _saveCache();
       if (mounted) {
         setState(() => _online = false);
         Notificacion.err(context, 'No se pudo editar la nota');
@@ -427,6 +507,7 @@ class _NotasPageState extends State<NotasPage> {
     if (ok != true) return;
     final base = _notas[index];
     _notas.removeAt(index);
+    await _saveCache();
     if (mounted) setState(() {});
     try {
       final headers = await _authHeaders();
@@ -437,6 +518,7 @@ class _NotasPageState extends State<NotasPage> {
       if (mounted) setState(() => _online = true);
     } catch (_) {
       _notas.insert(index, base);
+      await _saveCache();
       if (mounted) {
         setState(() => _online = false);
         Notificacion.err(context, 'No se pudo eliminar la nota');
@@ -457,6 +539,12 @@ class _NotasPageState extends State<NotasPage> {
     final h = dt.hour.toString().padLeft(2, '0');
     final min = dt.minute.toString().padLeft(2, '0');
     return '$d/$m/$y $h:$min';
+  }
+
+  String _fmtHora(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
   List<_NotaDoc> _sortedNotas(String email) {
@@ -498,13 +586,26 @@ class _NotasPageState extends State<NotasPage> {
             const SizedBox(width: 8),
             wiBox(Icons.layers_rounded, '${docs.length}', AppCSS.info),
             const SizedBox(width: 8),
-            IconButton(
-              onPressed: () => _syncNotas(),
-              icon: const Icon(Icons.sync_rounded),
-              tooltip: 'Sincronizar',
+            FilledButton.tonalIcon(
+              onPressed: _syncing ? null : () => _syncNotas(),
+              icon: _syncing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync_rounded),
+              label: Text(_syncing ? 'Actualizando...' : 'Actualizar'),
             ),
           ],
         ),
+        if (_lastSyncAt != null) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('Ultima actualización: ${_fmtHora(_lastSyncAt!)}', style: AppStyle.sm),
+          ),
+        ],
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(10),
@@ -683,4 +784,28 @@ class _NotaDoc {
         titulo: titulo ?? this.titulo,
         usuario: usuario,
       );
+
+  factory _NotaDoc.fromJson(Map<String, dynamic> json) {
+    return _NotaDoc(
+      color: (json['color'] as String? ?? 'Cielo').trim(),
+      contenido: (json['contenido'] as String? ?? '').trim(),
+      email: (json['email'] as String? ?? '').trim(),
+      fecha: DateTime.tryParse((json['fecha'] as String?) ?? '') ?? DateTime.now(),
+      id: (json['id'] as String? ?? '').trim(),
+      pin: json['pin'] == true,
+      titulo: (json['titulo'] as String? ?? 'Sin titulo').trim(),
+      usuario: (json['usuario'] as String? ?? 'Usuario').trim(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'email': email,
+        'usuario': usuario,
+        'titulo': titulo,
+        'contenido': contenido,
+        'color': color,
+        'pin': pin,
+        'fecha': fecha.toUtc().toIso8601String(),
+      };
 }
